@@ -1,5 +1,21 @@
 #include <LightStateService.h>
+// Decode HTTP GET value
+String redString = "0";
+String greenString = "0";
+String blueString = "0";
 
+// Red, green, and blue pins for PWM control
+const int redPin = 12;     // 13 corresponds to GPIO13
+const int greenPin = 13;   // 12 corresponds to GPIO12
+const int bluePin = 14;    // 14 corresponds to GPIO14
+
+// Setting PWM frequency, channels and bit resolution
+const int freq = 5000;
+const int redChannel = 0;
+const int greenChannel = 1;
+const int blueChannel = 2;
+// Bit resolution 2^8 = 256
+const int resolution = 8;
 LightStateService::LightStateService(AsyncWebServer* server,
                                      SecurityManager* securityManager,
                                      AsyncMqttClient* mqttClient,
@@ -23,6 +39,7 @@ LightStateService::LightStateService(AsyncWebServer* server,
     _lightMqttSettingsService(lightMqttSettingsService) {
   // configure led to be output
   pinMode(LED_PIN, OUTPUT);
+  
 
   // configure MQTT callback
   _mqttClient->onConnect(std::bind(&LightStateService::registerConfig, this));
@@ -36,11 +53,47 @@ LightStateService::LightStateService(AsyncWebServer* server,
 
 void LightStateService::begin() {
   _state.ledOn = DEFAULT_LED_STATE;
+  _state.rgbString = DEFAULT_RGB_STRING;
+ // configure LED PWM functionalitites
+  ledcSetup(redChannel, freq, resolution);
+  ledcSetup(greenChannel, freq, resolution);
+  ledcSetup(blueChannel, freq, resolution);
+  
+  // attach the channel to the GPIO to be controlled
+  ledcAttachPin(redPin, redChannel);
+  ledcAttachPin(greenPin, greenChannel);
+  ledcAttachPin(bluePin, blueChannel);
+
   onConfigUpdated();
 }
 
 void LightStateService::onConfigUpdated() {
   digitalWrite(LED_PIN, _state.ledOn ? LED_ON : LED_OFF);
+
+// Changes the output state according to the message
+    String messageTemp= _state.rgbString;
+    int pos1 = messageTemp.indexOf('r');
+    int pos2 = messageTemp.indexOf('g');
+    int pos3 = messageTemp.indexOf('b');
+    int pos4 = messageTemp.indexOf('&');
+    redString = messageTemp.substring(pos1+1, pos2);
+    greenString = messageTemp.substring(pos2+1, pos3);
+    blueString = messageTemp.substring(pos3+1, pos4);
+ 
+    ledcWrite(redChannel, redString.toInt());
+    ledcWrite(greenChannel, greenString.toInt());
+    ledcWrite(blueChannel, blueString.toInt());
+    // if(_state.ledOn){
+    //   ledcWrite(redChannel, 0);
+    //   ledcWrite(greenChannel, 0);
+    //   ledcWrite(blueChannel, 255);
+    // }else{
+    //   ledcWrite(redChannel, 0);
+    //   ledcWrite(greenChannel, 0);
+    //   ledcWrite(blueChannel, 0);
+    // }
+
+
 }
 
 void LightStateService::registerConfig() {

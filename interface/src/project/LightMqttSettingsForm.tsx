@@ -37,11 +37,11 @@ const LightMqttSettingsForm: FC = () => {
 
     return (
       <>
-        <MessageBox
+  {/*       <MessageBox
           level="info"
           message="The LED is controllable via MQTT with the demo project designed to work with Home Assistant's auto discovery feature."
           my={2}
-        />
+        /> */}
         <ValidatedTextField
           fieldErrors={fieldErrors}
           name="unique_id"
@@ -82,7 +82,7 @@ const LightMqttSettingsForm: FC = () => {
   };
 
   return (
-    <SectionContent title='MQTT Settings' titleGutter>
+    <SectionContent title='MQTT Device Settings' titleGutter>
       {content()}
     </SectionContent>
   );

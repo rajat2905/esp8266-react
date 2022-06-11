@@ -3,7 +3,7 @@
 namespace SettingValue {
 
 #ifdef ESP32
-const String PLATFORM = "esp32";
+const String PLATFORM = "rgb";
 #elif defined(ESP8266)
 const String PLATFORM = "esp8266";
 #endif

@@ -6,6 +6,7 @@ import SaveIcon from '@mui/icons-material/Save';
 
 import * as MqttApi from "../../api/mqtt";
 import { MqttSettings } from '../../types';
+import LightMqttSettingsForm from '../../project/LightMqttSettingsForm';
 import { BlockFormControlLabel, ButtonRow, FormLoader, SectionContent, ValidatedPasswordField, ValidatedTextField } from '../../components';
 import { MQTT_SETTINGS_VALIDATOR, validate } from '../../validators';
 import { numberValue, updateValue, useRest } from '../../utils';
@@ -130,6 +131,7 @@ const MqttSettingsForm: FC = () => {
             Save
           </Button>
         </ButtonRow>
+        <LightMqttSettingsForm />
       </>
     );
   };

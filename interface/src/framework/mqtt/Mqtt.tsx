@@ -19,7 +19,7 @@ const Mqtt: FC = () => {
     <>
       <RouterTabs value={routerTab}>
         <Tab value="status" label="MQTT Status" />
-        <Tab value="settings" label="MQTT Settings" disabled={!authenticatedContext.me.admin} />
+        <Tab value="settings" label="MQTT Server Settings" disabled={!authenticatedContext.me.admin} />
       </RouterTabs>
       <Routes>
         <Route path="status" element={<MqttStatusForm />} />

@@ -25,5 +25,6 @@ export interface MqttSettings {
   client_id: string;
   keep_alive: number;
   clean_session: boolean;
+  useTLS: boolean;
   max_topic_length: number;
 }

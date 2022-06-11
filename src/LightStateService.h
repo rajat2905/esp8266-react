@@ -10,6 +10,7 @@
 #define LED_PIN 2
 
 #define DEFAULT_LED_STATE false
+#define DEFAULT_RGB_STRING "r0g0b0&"
 #define OFF_STATE "OFF"
 #define ON_STATE "ON"
 
@@ -29,15 +30,24 @@
 class LightState {
  public:
   bool ledOn;
-
+  String rgbString;
   static void read(LightState& settings, JsonObject& root) {
     root["led_on"] = settings.ledOn;
+    root["rgbString"] = settings.rgbString;
   }
 
   static StateUpdateResult update(JsonObject& root, LightState& lightState) {
     boolean newState = root["led_on"] | DEFAULT_LED_STATE;
-    if (lightState.ledOn != newState) {
-      lightState.ledOn = newState;
+    String newRgbString = root["rgbString"] | DEFAULT_RGB_STRING;
+    int value = strcmp(lightState.rgbString.c_str(),newRgbString.c_str());
+    // change the new state, if required
+    if(lightState.ledOn != newState || value != 0){
+      if (lightState.ledOn != newState) {
+        lightState.ledOn = newState;
+      }
+      if (value != 0) {
+        lightState.rgbString = newRgbString;
+      }
       return StateUpdateResult::CHANGED;
     }
     return StateUpdateResult::UNCHANGED;
@@ -45,20 +55,31 @@ class LightState {
 
   static void haRead(LightState& settings, JsonObject& root) {
     root["state"] = settings.ledOn ? ON_STATE : OFF_STATE;
+    root["rgbString"] = settings.rgbString;
   }
 
   static StateUpdateResult haUpdate(JsonObject& root, LightState& lightState) {
     String state = root["state"];
+    String newRgbString = root["rgbString"];
     // parse new led state 
     boolean newState = false;
+    int value = strcmp(lightState.rgbString.c_str(),newRgbString.c_str());
     if (state.equals(ON_STATE)) {
       newState = true;
     } else if (!state.equals(OFF_STATE)) {
+      // return StateUpdateResult::ERROR;
+    }
+    if (newRgbString.equals("null")) {
       return StateUpdateResult::ERROR;
     }
     // change the new state, if required
-    if (lightState.ledOn != newState) {
-      lightState.ledOn = newState;
+    if(lightState.ledOn != newState || value != 0){
+      if (lightState.ledOn != newState) {
+        lightState.ledOn = newState;
+      }
+      if (value != 0) {
+        lightState.rgbString = newRgbString;
+      }
       return StateUpdateResult::CHANGED;
     }
     return StateUpdateResult::UNCHANGED;

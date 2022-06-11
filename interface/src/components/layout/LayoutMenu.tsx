@@ -38,7 +38,7 @@ const LayoutMenu: FC = () => {
         {features.security && (
           <LayoutMenuItem icon={LockIcon} label="Security" to="/security" disabled={!authenticatedContext.me.admin} />
         )}
-        <LayoutMenuItem icon={SettingsIcon} label="System" to="/system" />
+        {/* <LayoutMenuItem icon={SettingsIcon} label="System" to="/system" /> */}
       </List>
     </>
   );
