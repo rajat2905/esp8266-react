@@ -65,7 +65,7 @@ void NTPSettingsService::configureNTP() {
     setenv("TZ", _state.tzFormat.c_str(), 1);
     tzset();
 #elif defined(ESP8266)
-    setTZ(_state.tzFormat.c_str());
+    // setTZ(_state.tzFormat.c_str());
 #endif
     sntp_stop();
   }
