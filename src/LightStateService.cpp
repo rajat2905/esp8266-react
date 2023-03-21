@@ -1,17 +1,19 @@
 #include <LightStateService.h>
 #include <EEPROM.h>
-// Decode HTTP GET value
-String aString = "0";
-String bString = "0";
-String cString = "0";
-String dString = "0";
-String pubtopic="";
+#include "bsec.h"
+#define STATE_SAVE_PERIOD UINT32_C(360 * 60 * 1000) // 360 minutes - 4 times a day
+// Helper functions declarations
+void checkIaqSensorStatus(void);
+void errLeds(void);
+void loadState(void);
+void updateState(void);  
 
-// Red, green, and blue pins for PWM control
-const int relay1 = 13;     // 13 corresponds to GPIO12
-const int relay2 = 12;   // 12 corresponds to GPIO13
-const int relay3 = 14;    // 14 corresponds to GPIO14
-const int relay4 = 16;    // 14 corresponds to GPIO16
+// Create an object of the class Bsec
+Bsec iaqSensor;
+uint8_t bsecState[BSEC_MAX_STATE_BLOB_SIZE] = {0};
+uint16_t stateUpdateCounter = 0;                  
+uint16_t timeInterval=60000;
+String output;
 
 LightStateService::LightStateService(AsyncWebServer* server,
                                      SecurityManager* securityManager,
@@ -37,7 +39,6 @@ LightStateService::LightStateService(AsyncWebServer* server,
   // configure led to be output
   pinMode(LED_PIN, OUTPUT);
   
-
   // configure MQTT callback
   _mqttClient->onConnect(std::bind(&LightStateService::registerConfig, this));
 
@@ -47,98 +48,188 @@ LightStateService::LightStateService(AsyncWebServer* server,
   // configure settings service update handler to update LED state
   addUpdateHandler([&](const String& originId) { onConfigUpdated(); }, false);
 }
-
+double round2(double value) {
+   return (int)(value * 100 + 0.5) / 100.0;
+}
+const uint8_t bsec_config_iaq[] = {
+#include "config/generic_33v_3s_4d/bsec_iaq.txt"
+};
 void LightStateService::begin() {
   _state.ledOn = DEFAULT_LED_STATE;
   _state.swString = DEFAULT_SW_STRING;
 
-  EEPROM.begin(512);  //Initialize EEPROM
-  pinMode(relay1, OUTPUT);
-  pinMode(relay2, OUTPUT);
-  pinMode(relay3, OUTPUT);
-  pinMode(relay4, OUTPUT);
-  Serial.println(F("relaySwitch example\n\n"));
-    int gpio=EEPROM.read(0);
-    aString=String(bitRead(gpio, 0));
-    bString=String(bitRead(gpio, 1));
-    cString=String(bitRead(gpio, 2));
-    dString=String(bitRead(gpio, 3));
+  //BSEC_setup
+EEPROM.begin(BSEC_MAX_STATE_BLOB_SIZE + 1); // 1st address for the length                              
+  Wire.begin(21,22);
+Serial.println("Starting");
+  //iaqSensor.begin(BME680_I2C_ADDR_PRIMARY, Wire);
+  iaqSensor.begin(0x77, Wire);
+  output = "\nBSEC library version " + String(iaqSensor.version.major) + "." + String(iaqSensor.version.minor) + "." + String(iaqSensor.version.major_bugfix) + "." + String(iaqSensor.version.minor_bugfix);
+  Serial.println(output);
+  checkIaqSensorStatus();
+  
+  iaqSensor.setConfig(bsec_config_iaq);
+  checkIaqSensorStatus();
 
-    digitalWrite(relay1, aString.toInt());
-    digitalWrite(relay2, bString.toInt());
-    digitalWrite(relay3, cString.toInt());
-    digitalWrite(relay4, dString.toInt());
-    
-    Serial.print("gpio:");
-    Serial.println(gpio);
-  //onConfigUpdated();
+  loadState();                 
+  bsec_virtual_sensor_t sensorList[10] = {
+    BSEC_OUTPUT_RAW_TEMPERATURE,
+    BSEC_OUTPUT_RAW_PRESSURE,
+    BSEC_OUTPUT_RAW_HUMIDITY,
+    BSEC_OUTPUT_RAW_GAS,
+    BSEC_OUTPUT_IAQ,
+    BSEC_OUTPUT_STATIC_IAQ,
+    BSEC_OUTPUT_CO2_EQUIVALENT,
+    BSEC_OUTPUT_BREATH_VOC_EQUIVALENT,
+    BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_TEMPERATURE,
+    BSEC_OUTPUT_SENSOR_HEAT_COMPENSATED_HUMIDITY,
+  };
+
+  iaqSensor.updateSubscription(sensorList, 10, BSEC_SAMPLE_RATE_LP);
+  checkIaqSensorStatus();
+
+  // Print the header
+  output = "Timestamp [ms], raw temperature [°C], pressure [hPa], raw relative humidity [%], gas [Ohm], IAQ, IAQ accuracy, temperature [°C], relative humidity [%], Static IAQ, CO2 equivalent, breath VOC equivalent";
+  Serial.println(output);
+}
+
+void LightStateService::loop() {
+  unsigned long time_trigger;
+if (iaqSensor.run()) { // If new data is available
+    DynamicJsonDocument doc(1024);
+    doc["Time"]=time_trigger;
+    //doc["rawTemperature"]=round2(iaqSensor.rawTemperature);
+    doc["pressure"]=round2(iaqSensor.pressure);
+    //doc["rawHumidity"]=round2(iaqSensor.rawHumidity);
+    doc["gasResistance"]=round2(iaqSensor.gasResistance);
+    doc["iaq"]=round2(iaqSensor.iaq);
+    //doc["iaqAccuracy"]=iaqSensor.iaqAccuracy;
+    doc["temperature"]=round2(iaqSensor.temperature);
+    doc["humidity"]=round2(iaqSensor.humidity);
+    doc["staticIaq"]=round2(iaqSensor.staticIaq);
+    doc["co2"]=round2(iaqSensor.co2Equivalent);
+    doc["VOC"]=round2(iaqSensor.breathVocEquivalent);
+    //serializeJson(doc, Serial);
+    String payload;
+    serializeJson(doc, payload);
+    _mqttClient->publish(pubtopic.c_str(), 0, false, payload.c_str());
+
+    output = String(time_trigger);
+    output += ", " + String(iaqSensor.rawTemperature);
+    output += ", " + String(iaqSensor.pressure);
+    output += ", " + String(iaqSensor.rawHumidity);
+    output += ", " + String(iaqSensor.gasResistance);
+    output += ", " + String(iaqSensor.iaq);
+    output += ", " + String(iaqSensor.iaqAccuracy);
+    output += ", " + String(iaqSensor.temperature);
+    output += ", " + String(iaqSensor.humidity);
+    output += ", " + String(iaqSensor.staticIaq);
+    output += ", " + String(iaqSensor.co2Equivalent);
+    output += ", " + String(iaqSensor.breathVocEquivalent);
+    Serial.println(output);
+  updateState();
+  } else {
+    checkIaqSensorStatus();
+  }
+
+}
+
+// Helper function definitions
+void checkIaqSensorStatus(void)
+{
+  if (iaqSensor.status != BSEC_OK) {
+    if (iaqSensor.status < BSEC_OK) {
+      output = "BSEC error code : " + String(iaqSensor.status);
+      Serial.println(output);
+      for (;;)
+        errLeds(); /* Halt in case of failure */
+    } else {
+      output = "BSEC warning code : " + String(iaqSensor.status);
+      Serial.println(output);
+    }
+  }
+
+  if (iaqSensor.bme680Status != BME680_OK) {
+    if (iaqSensor.bme680Status < BME680_OK) {
+      output = "BME680 error code : " + String(iaqSensor.bme680Status);
+      Serial.println(output);
+      for (;;)
+        errLeds(); /* Halt in case of failure */
+    } else {
+      output = "BME680 warning code : " + String(iaqSensor.bme680Status);
+      Serial.println(output);
+    }
+  }
+  iaqSensor.status = BSEC_OK;          
+}
+void errLeds(void)
+{
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, HIGH);
+  Serial.println("Error..");
+  delay(100);
+  digitalWrite(LED_BUILTIN, LOW);
+  delay(100);
+}
+void loadState(void)
+{
+  if (EEPROM.read(0) == BSEC_MAX_STATE_BLOB_SIZE) {
+    // Existing state in EEPROM
+    Serial.println("Reading state from EEPROM");
+
+    for (uint8_t i = 0; i < BSEC_MAX_STATE_BLOB_SIZE; i++) {
+      bsecState[i] = EEPROM.read(i + 1);
+      Serial.println(bsecState[i], HEX);
+    }
+
+    iaqSensor.setState(bsecState);
+    checkIaqSensorStatus();
+  } else {
+    // Erase the EEPROM with zeroes
+    Serial.println("Erasing EEPROM");
+
+    for (uint8_t i = 0; i < BSEC_MAX_STATE_BLOB_SIZE + 1; i++)
+      EEPROM.write(i, 0);
+
+    EEPROM.commit();
+  }
+}
+
+void updateState(void)
+{
+  bool update = false;
+  /* Set a trigger to save the state. Here, the state is saved every STATE_SAVE_PERIOD with the first state being saved once the algorithm achieves full calibration, i.e. iaqAccuracy = 3 */
+  if (stateUpdateCounter == 0) {
+    if (iaqSensor.iaqAccuracy >= 3) {
+      update = true;
+      stateUpdateCounter++;
+    }
+  } else {
+    /* Update every STATE_SAVE_PERIOD milliseconds */
+    if ((stateUpdateCounter * STATE_SAVE_PERIOD) < millis()) {
+      update = true;
+      stateUpdateCounter++;
+    }
+  }
+
+  if (update) {
+    iaqSensor.getState(bsecState);
+    checkIaqSensorStatus();
+
+    Serial.println("Writing state to EEPROM");
+
+    for (uint8_t i = 0; i < BSEC_MAX_STATE_BLOB_SIZE ; i++) {
+      EEPROM.write(i + 1, bsecState[i]);
+      Serial.println(bsecState[i], HEX);
+    }
+
+    EEPROM.write(0, BSEC_MAX_STATE_BLOB_SIZE);
+    EEPROM.commit();
+  }
 }
 
 void LightStateService::onConfigUpdated() {
   digitalWrite(LED_PIN, _state.ledOn ? LED_ON : LED_OFF);
-
-// Changes the output state according to the message
-    String messageTemp= _state.swString;
-
-    int pos1 = messageTemp.indexOf('a');
-    int pos2 = messageTemp.indexOf('b');
-    int pos3 = messageTemp.indexOf('c');
-    int pos4 = messageTemp.indexOf('d');
-    if(pos1>-1){
-      aString = messageTemp.substring(pos1+1, pos1+2);
-      if(aString.toInt()==0 || aString.toInt()==1){
-        digitalWrite(relay1, aString.toInt());
-      }
-    }
-    if(pos2>-1){
-      bString = messageTemp.substring(pos2+1, pos2+2);
-      if(bString.toInt()==0 || bString.toInt()==1){
-        digitalWrite(relay2, bString.toInt());
-      }
-    }
-    if(pos3>-1){
-      cString = messageTemp.substring(pos3+1, pos3+2);
-      if(cString.toInt()==0 || cString.toInt()==1){
-        digitalWrite(relay3, cString.toInt());
-      }
-    }
-    if(pos4>-1){
-      dString = messageTemp.substring(pos4+1, pos4+2);
-      if(dString.toInt()==0 || dString.toInt()==1){
-        digitalWrite(relay4, dString.toInt());
-      }
-    }
-
-    Serial.println(messageTemp);
-    int value=0;
-    String str=String(aString+bString+cString+dString);
-    for(int i=0;i<4;i++){
-      value*=2;
-      if(str[i]=='1')value++;
-    }
-    Serial.print("gpioStr:");
-    Serial.println(str);
-    EEPROM.write(0, value);
-    EEPROM.commit();    //Store data to EEPROM
-    Serial.print("EEProm gpio:");
-    Serial.println(EEPROM.read(0));
-    // ledcWrite(redChannel, redString.toInt());
-    // ledcWrite(greenChannel, greenString.toInt());
-    // ledcWrite(blueChannel, blueString.toInt());
-    // if(_state.ledOn){
-    //   ledcWrite(redChannel, 0);
-    //   ledcWrite(greenChannel, 0);
-    //   ledcWrite(blueChannel, 255);
-    // }else{
-    //   ledcWrite(redChannel, 0);
-    //   ledcWrite(greenChannel, 0);
-    //   ledcWrite(blueChannel, 0);
-    // }
-  DynamicJsonDocument doc(256);
-  doc["swString"] = String("a"+aString+"b"+bString+"c"+cString+"d"+dString);
-  String payload;
-  serializeJson(doc, payload);
-  _mqttClient->publish(pubtopic.c_str(), 0, false, payload.c_str());
 
 }
 
@@ -155,7 +246,6 @@ void LightStateService::registerConfig() {
     configTopic = settings.mqttPath + "/config";
     subTopic = settings.mqttPath + "/set";
     pubTopic = settings.mqttPath + "/state";
-    pubtopic=pubTopic;
     doc["~"] = settings.mqttPath;
     doc["name"] = settings.name;
     doc["unique_id"] = settings.uniqueId;
