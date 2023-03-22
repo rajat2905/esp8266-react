@@ -7,7 +7,7 @@ void checkIaqSensorStatus(void);
 void errLeds(void);
 void loadState(void);
 void updateState(void);  
-
+String pubtopic="";
 // Create an object of the class Bsec
 Bsec iaqSensor;
 uint8_t bsecState[BSEC_MAX_STATE_BLOB_SIZE] = {0};
@@ -94,8 +94,9 @@ Serial.println("Starting");
 }
 
 void LightStateService::loop() {
-  unsigned long time_trigger;
+
 if (iaqSensor.run()) { // If new data is available
+  unsigned long time_trigger = millis();
     DynamicJsonDocument doc(1024);
     doc["Time"]=time_trigger;
     //doc["rawTemperature"]=round2(iaqSensor.rawTemperature);
@@ -246,6 +247,7 @@ void LightStateService::registerConfig() {
     configTopic = settings.mqttPath + "/config";
     subTopic = settings.mqttPath + "/set";
     pubTopic = settings.mqttPath + "/state";
+    pubtopic=pubTopic;
     doc["~"] = settings.mqttPath;
     doc["name"] = settings.name;
     doc["unique_id"] = settings.uniqueId;
