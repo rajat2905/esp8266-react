@@ -10,7 +10,7 @@
 #define LED_PIN 2
 
 #define DEFAULT_LED_STATE false
-#define DEFAULT_SW_STRING "a0b0c0d0&"
+#define DEFAULT_SW_STRING "R"
 #define OFF_STATE "OFF"
 #define ON_STATE "ON"
 
@@ -71,6 +71,8 @@ class LightState {
     }
     if (newSwString.equals("null")) {
       return StateUpdateResult::ERROR;
+    }else{
+      return StateUpdateResult::CHANGED;
     }
     // change the new state, if required
     if(lightState.ledOn != newState || value != 0){
@@ -92,7 +94,14 @@ class LightStateService : public StatefulService<LightState> {
                     SecurityManager* securityManager,
                     AsyncMqttClient* mqttClient,
                     LightMqttSettingsService* lightMqttSettingsService);
+
+  void publishPersonPassage(int serialData);
+  void publishDistance(int serialData, int zona);
+  void zones_calibration_boot();
+  void zones_calibration();
   void begin();
+
+  void loop();
 
  private:
   HttpEndpoint<LightState> _httpEndpoint;
@@ -102,6 +111,7 @@ class LightStateService : public StatefulService<LightState> {
   LightMqttSettingsService* _lightMqttSettingsService;
 
   void registerConfig();
+  void processPeopleCountingData(int16_t Distance, uint8_t zone);
   void onConfigUpdated();
 };
 

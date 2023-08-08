@@ -20,11 +20,11 @@ void setup() {
   // start the framework and demo project
   esp8266React.begin();
 
-  // load the initial light settings
-  lightStateService.begin();
-
   // start the light service
   lightMqttSettingsService.begin();
+
+    // load the initial light settings
+  lightStateService.begin();
 
   // start the server
   server.begin();
@@ -33,4 +33,6 @@ void setup() {
 void loop() {
   // run the framework's loop function
   esp8266React.loop();
+
+   lightStateService.loop();
 }
