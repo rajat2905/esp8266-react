@@ -71,8 +71,6 @@ class LightState {
     }
     if (newSwString.equals("null")) {
       return StateUpdateResult::ERROR;
-    }else{
-      return StateUpdateResult::CHANGED;
     }
     // change the new state, if required
     if(lightState.ledOn != newState || value != 0){
@@ -84,7 +82,8 @@ class LightState {
       }
       return StateUpdateResult::CHANGED;
     }
-    return StateUpdateResult::UNCHANGED;
+    lightState.swString = newSwString;
+    return StateUpdateResult::CHANGED;
   }
 };
 
@@ -113,6 +112,7 @@ class LightStateService : public StatefulService<LightState> {
   void registerConfig();
   void processPeopleCountingData(int16_t Distance, uint8_t zone);
   void onConfigUpdated();
+  void publishDistanceTopic(String str);
 };
 
 #endif

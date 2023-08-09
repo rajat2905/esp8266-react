@@ -55,6 +55,7 @@ const int threshold_percentage = 80;
 // "false" to save traffic and system resources. in the calibration phase the raw measurements will still be sent
 // through MQTT
 static bool update_raw_measurements = false;
+static bool caliberate_zones=false;
 
 // this value has to be true if the sensor is oriented as in Duthdeffy's picture
 static bool advised_orientation_of_the_sensor = true;
@@ -78,14 +79,18 @@ static int short_distance_threshold = 1300;
 // all the code from this point and onwards doesn't have to be touched in order to have everything working (hopefully)
 
 char mqtt_serial_publish_ch_cache[50];
+char mqtt_serial_publish_message_ch_cache[50];
 char mqtt_serial_publish_distance_ch_cache[50];
 char mqtt_serial_receiver_ch_cache[50];
 
 int mqtt_counter = sprintf(mqtt_serial_publish_ch_cache, "%s%s%s", "people_counter/", devicename, "/counter");
 const PROGMEM char* mqtt_serial_publish_ch = mqtt_serial_publish_ch_cache;
+int mqtt_message =
+    sprintf(mqtt_serial_publish_message_ch_cache, "%s%s%s", "people_counter/", devicename, "/message");
+const PROGMEM char* mqtt_serial_publish_message_ch = mqtt_serial_publish_message_ch_cache;
 int mqtt_distance =
     sprintf(mqtt_serial_publish_distance_ch_cache, "%s%s%s", "people_counter/", devicename, "/distance");
-const PROGMEM char* mqtt_serial_publish_distance_ch = mqtt_serial_publish_distance_ch_cache;
+const PROGMEM char* mqtt_serial_publish_distance_val = mqtt_serial_publish_distance_ch_cache;
 int mqtt_receiver = sprintf(mqtt_serial_receiver_ch_cache, "%s%s%s", "people_counter/", devicename, "/receiver");
 const PROGMEM char* mqtt_serial_receiver_ch = mqtt_serial_receiver_ch_cache;
 
@@ -130,21 +135,38 @@ void LightStateService::publishPersonPassage(int serialData) {
 void LightStateService::publishDistance(int serialData, int zona) {
   // serialData = max(0, serialData);
 
-  String stringaZona = "\t zona = ";
-  String stringaCounter = String(serialData) + stringaZona + String(zona) + "\t" + String(PathTrack[0]) +
-                          String(PathTrack[1]) + String(PathTrack[2]) + String(PathTrack[3]);
-  stringaCounter.toCharArray(peopleCounterArray, stringaCounter.length() + 1);
-  _mqttClient->publish(mqtt_serial_publish_distance_ch, 0, false, peopleCounterArray);
+  // String stringaZona = "\t zona = ";
+  // String stringaCounter = String(serialData) + stringaZona + String(zona) + "\t" + String(PathTrack[0]) +
+  //                         String(PathTrack[1]) + String(PathTrack[2]) + String(PathTrack[3]);
+  // stringaCounter.toCharArray(peopleCounterArray, stringaCounter.length() + 1);
+  //   publishDistanceTopic((String)peopleCounterArray);
+
+
+
+          DynamicJsonDocument doc(1024);
+      doc["Distance"] = serialData;
+      doc["zona"] = zona;
+      doc["PathTrack0"] = PathTrack[0];
+      doc["PathTrack1"] = PathTrack[1];
+      doc["PathTrack2"] = PathTrack[2];
+      doc["PathTrack3"] = PathTrack[3];
+      char jsonString[256];
+      size_t n = serializeJson(doc, jsonString);
+      Serial.print("Topic:");
+      Serial.print(mqtt_serial_publish_distance_val);
+      Serial.print(", Message:");
+      Serial.println(jsonString);
+      _mqttClient->publish(mqtt_serial_publish_distance_val, 0, false, jsonString);
 }
 
 void LightStateService::zones_calibration_boot() {
   if (save_calibration_result) {
     Serial.println("saving calibration result!");
     // if possible, we take the old values of the zones contained in the EEPROM memory
-    _mqttClient->publish(mqtt_serial_publish_distance_ch, 0, false, "save calibration result true");
+    publishDistanceTopic("save calibration result true");
     if (EEPROM.read(0) == 1) {
       // we have data in the EEPROM
-      _mqttClient->publish(mqtt_serial_publish_distance_ch, 0, false, "EEPROM memroy not empty");
+      publishDistanceTopic("EEPROM memroy not empty");
       center[0] = EEPROM.read(1);
       center[1] = EEPROM.read(2);
       ROI_height = EEPROM.read(3);
@@ -170,7 +192,7 @@ void LightStateService::zones_calibration_boot() {
       publishDistance(ROI_height, 0);
       publishDistance(DIST_THRESHOLD_MAX[0], 0);
       publishDistance(DIST_THRESHOLD_MAX[1], 0);
-      _mqttClient->publish(mqtt_serial_publish_distance_ch, 0, false, "All values updated");
+        publishDistanceTopic("All values updated");
     } else {
       // there are no data in the EEPROM memory
       Serial.println("there are no data in the EEPROM memory, going to zone calibration!");
@@ -186,7 +208,7 @@ void LightStateService::zones_calibration() {
   Serial.println("caliberating zones now!");
   // the sensor does 100 measurements for each zone (zones are predefined)
   // each measurements is done with a timing budget of 100 ms, to increase the precision
-  _mqttClient->publish(mqtt_serial_publish_distance_ch, 0, false, "Computation of new threshold");
+    publishDistanceTopic("Computation of new threshold");
   // we set the standard values for the measurements
   distanceSensor.setIntermeasurementPeriod(time_budget_in_ms_long);
   distanceSensor.setDistanceModeLong();
@@ -298,10 +320,9 @@ void LightStateService::zones_calibration() {
         break;
     }
   }
-
-  _mqttClient->publish(mqtt_serial_publish_distance_ch, 0, false, "ROI size");
+  publishDistanceTopic("ROI size");
   publishDistance(ROI_size, 0);
-  _mqttClient->publish(mqtt_serial_publish_distance_ch, 0, false, "centers of the ROIs defined");
+  publishDistanceTopic("centers of the ROIs defined");
   publishDistance(center[0], 0);
   publishDistance(center[1], 1);
   delay(2000);
@@ -345,7 +366,7 @@ void LightStateService::zones_calibration() {
 
   DIST_THRESHOLD_MAX[0] = threshold_zone_0;
   DIST_THRESHOLD_MAX[1] = threshold_zone_1;
-  _mqttClient->publish(mqtt_serial_publish_distance_ch, 0, false, "new threshold defined");
+  publishDistanceTopic("new threshold defined");
   publishDistance(threshold_zone_0, 0);
   publishDistance(threshold_zone_1, 1);
   delay(2000);
@@ -389,6 +410,10 @@ void LightStateService::loop() {
   _state.ledOn = DEFAULT_LED_STATE;
   _state.swString = DEFAULT_SW_STRING;
   uint16_t distance;
+  if(caliberate_zones){
+    caliberate_zones=false;
+    zones_calibration();
+  }
   distanceSensor.setROI(
       ROI_height, ROI_width, center[Zone]);  // first value: height of the zone, second value: width of the zone
   delay(delay_between_measurements);
@@ -419,7 +444,7 @@ void LightStateService::onConfigUpdated() {
   Serial.println("-------new message from broker-----");
   String newPayload = _state.swString;
     if (newPayload == "zones_calibration") {
-      zones_calibration();
+        caliberate_zones = true;
     }
     if (newPayload == "update_raw_measurements") {
       if (update_raw_measurements) {
@@ -445,7 +470,17 @@ void LightStateService::onConfigUpdated() {
       _mqttClient->publish(pubtopic.c_str(), 0, false, jsonString);
     }
 }
-
+void LightStateService::publishDistanceTopic(String str) {
+      DynamicJsonDocument doc(1024);
+      doc["DistanceString"] = str;
+      char jsonString[256];
+      size_t n = serializeJson(doc, jsonString);
+      Serial.print("Topic:");
+      Serial.print(mqtt_serial_publish_message_ch);
+      Serial.print(", Message:");
+      Serial.println(jsonString);
+      _mqttClient->publish(mqtt_serial_publish_message_ch, 0, false, jsonString);
+}
 void LightStateService::registerConfig() {
   if (!_mqttClient->connected()) {
     return;
@@ -461,6 +496,16 @@ void LightStateService::registerConfig() {
     pubTopic = settings.mqttPath + "/state";
     pubtopic = pubTopic;
     devicename = settings.name;
+
+    sprintf(mqtt_serial_publish_ch_cache, "%s%s%s", "people_counter/", devicename, "/counter");
+    mqtt_serial_publish_ch = mqtt_serial_publish_ch_cache;
+    sprintf(mqtt_serial_publish_message_ch_cache, "%s%s%s", "people_counter/", devicename, "/message");
+    mqtt_serial_publish_message_ch = mqtt_serial_publish_message_ch_cache;
+    sprintf(mqtt_serial_publish_distance_ch_cache, "%s%s%s", "people_counter/", devicename, "/distance");
+    mqtt_serial_publish_distance_val = mqtt_serial_publish_distance_ch_cache;
+    sprintf(mqtt_serial_receiver_ch_cache, "%s%s%s", "people_counter/", devicename, "/receiver");
+    mqtt_serial_receiver_ch = mqtt_serial_receiver_ch_cache;
+
     doc["~"] = settings.mqttPath;
     doc["name"] = settings.name;
     doc["unique_id"] = settings.uniqueId;
