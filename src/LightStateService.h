@@ -92,8 +92,13 @@ class LightStateService : public StatefulService<LightState> {
                     SecurityManager* securityManager,
                     AsyncMqttClient* mqttClient,
                     LightMqttSettingsService* lightMqttSettingsService);
+  //                     void publishPersonPassage(int serialData);
+  // void publishDistance(int serialData, int zona);
+  // void zones_calibration_boot();
+  // void zones_calibration();
   void begin();
-
+void loop();
+// void publishToTopic(const char* topic, const char* msg );
  private:
   HttpEndpoint<LightState> _httpEndpoint;
   MqttPubSub<LightState> _mqttPubSub;
@@ -101,8 +106,11 @@ class LightStateService : public StatefulService<LightState> {
   AsyncMqttClient* _mqttClient;
   LightMqttSettingsService* _lightMqttSettingsService;
 
-  void registerConfig();
+   void registerConfig();
   void onConfigUpdated();
+  // void publishDistanceTopic(String str);
+  // void processPeopleCountingData(int16_t Distance, uint8_t zone);
+  
 };
 
 #endif
